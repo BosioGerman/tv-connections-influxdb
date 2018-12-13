@@ -1,6 +1,4 @@
-FROM golang:latest
-RUN mkdir /app
-ADD . /app/
-WORKDIR /app
-RUN go build -o main .
-CMD ["/app/main"]
+FROM scratch
+ADD ./bin /home
+WORKDIR /home
+CMD ["/home/main"]

@@ -1,16 +1,18 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"github.com/influxdata/influxdb/client/v2"
-	"github.com/labstack/gommon/log"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-	"gopkg.in/resty.v1"
-	"encoding/json"
+
+	"github.com/influxdata/influxdb/client/v2"
+	log "github.com/sirupsen/logrus"
+	resty "gopkg.in/resty.v1"
 )
+
 type Tvsessionitem struct {
 	ID               string    `json:"id"`
 	Userid           string    `json:"userid"`
@@ -33,8 +35,8 @@ type Tvsessionitem struct {
 }
 
 type Tvsession struct {
-	Records []Tvsessionitem `json:"records"`
-	RecordsRemaining int `json:"records_remaining"`
+	Records          []Tvsessionitem `json:"records"`
+	RecordsRemaining int             `json:"records_remaining"`
 }
 
 func getEnv(key, fallback string) string {
@@ -79,7 +81,15 @@ func getConnections(host, path, token string) (list []Tvsessionitem) {
 
 func main() {
 	protocol := getEnv("INFLUXDB_PROTOCOL", "http")
-	host := getEnv("INFLUXDB_HOST", "localhost")
+
+	if strings.ToLower(protocol) != "http" && strings.ToLower(protocol) != "udp" {
+		log.Fatal("INFLUXDB_PROTOCOL must be http or udp")
+	}
+
+
+	measurement := getEnv("INFLUXDB_MEASUREMENT", "connections")
+
+	host := getEnv("INFLUXDB_HOST", "http://localhost")
 	influxdbPort := getEnv("INFLUXDB_PORT", "8084")
 
 	port, err := strconv.Atoi(influxdbPort)
@@ -89,7 +99,7 @@ func main() {
 
 	database := getEnv("INFLUXDB_DATABASENAME", "tv")
 	user := getEnv("INFLUXDB_USERNAME", "")
-	password := getEnv("INFLUXDB_USER_PASSWORD","")
+	password := getEnv("INFLUXDB_USER_PASSWORD", "")
 	token := getEnv("TV_TOKEN", "")
 	checkInterval := getEnv("CHECK_INTERVAL", "60")
 
@@ -99,7 +109,7 @@ func main() {
 	}
 	tvhost := os.Getenv("TV_HOST")
 	tvpath := os.Getenv("TV_PATH")
-	fmt.Printf("InfluxDB Protocol: %s\r\nInfluxDB Host: %s\r\nInfluxDB port: %s\r\nInfluxDB Database: %s\r\nInfluxDB User: %s\r\nInfluxDB Password: %s\r\nTeamviewer Token: %s\r\nCheck Interval: %s\r\nTeamviewer Host: %s\r\nTeamviewer Path: %s\r\n ",protocol, host, port, database, user, password, token, interval, tvhost, tvpath)
+	fmt.Printf("InfluxDB Protocol: %s\r\nInfluxDB Host: %s\r\nInfluxDB port: %d\r\nInfluxDB Database: %s\r\nInfluxDB User: %s\r\nInfluxDB Password: %s\r\nTeamviewer Token: %s\r\nCheck Interval: %d\r\nTeamviewer Host: %s\r\nTeamviewer Path: %s\r\n ", protocol, host, port, database, user, password, token, interval, tvhost, tvpath)
 
 	ticker := time.NewTicker(time.Duration(interval) * time.Second)
 	quit := make(chan struct{})
@@ -119,10 +129,9 @@ func main() {
 	}
 	defer cli.Close()
 
-
 	for {
 		select {
-		case <- ticker.C:
+		case <-ticker.C:
 			//Get teamviewer active connections
 			connections := getConnections(tvhost, tvpath, token)
 
@@ -139,7 +148,7 @@ func main() {
 				"value": len(connections),
 			}
 
-			pt, err := client.NewPoint("sessions", tags, fields)
+			pt, err := client.NewPoint(measurement, tags, fields)
 			logIfError(err)
 			bp.AddPoint(pt)
 
@@ -147,7 +156,7 @@ func main() {
 			err = cli.Write(bp)
 			logIfError(err)
 
-		case <- quit:
+		case <-quit:
 			ticker.Stop()
 			return
 		}

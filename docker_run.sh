@@ -1,0 +1,1 @@
+docker run -it --rm --name teamviewer -e CHECK_INTERVAL=1 bosiogerman/tv-connections-influxdb:latest
